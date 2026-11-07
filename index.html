@@ -1,0 +1,95 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, user-scalable=no">
+  <title>Bubble Pop</title>
+  <meta name="description" content="Pop bubbles by waving your hands at the camera. Runs entirely in your browser.">
+  <meta name="theme-color" content="#1a1145">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  <meta name="apple-mobile-web-app-title" content="Bubble Pop">
+  <link rel="manifest" href="manifest.webmanifest">
+  <link rel="icon" href="icons/icon.svg" type="image/svg+xml">
+  <link rel="apple-touch-icon" href="icons/icon-180.png">
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <!-- Faint live camera feed (never leaves the device) -->
+  <video id="cam" playsinline muted autoplay></video>
+  <canvas id="game"></canvas>
+
+  <!-- Start screen: browsers need a tap before camera + sound -->
+  <div id="startScreen" class="overlay">
+    <h1 class="title"><span>B</span><span>u</span><span>b</span><span>b</span><span>l</span><span>e</span>&nbsp;<span>P</span><span>o</span><span>p</span></h1>
+    <button id="start" aria-label="Start">
+      <svg viewBox="0 0 100 100" aria-hidden="true"><path d="M38 28 L74 50 L38 72 Z" fill="currentColor"/></svg>
+    </button>
+    <p class="hint">Grown-ups: press <b>H</b> for keys, or long-press <span class="gear-ico">⚙</span> (top right) for settings.<br>
+      The camera stays on this device. Nothing is uploaded.</p>
+  </div>
+
+  <div id="rotate" class="overlay">
+    <div class="phone-ico"></div>
+    <p>Turn the phone sideways</p>
+  </div>
+
+  <div id="pausedMsg" class="overlay">
+    <p>Paused<br><small>Press P, or long-press ⚙ to resume</small></p>
+  </div>
+
+  <!-- Parent controls -->
+  <button id="gear" aria-label="Settings (long press)">
+    <svg class="ring" viewBox="0 0 48 48" aria-hidden="true"><circle cx="24" cy="24" r="21"/></svg>
+    <span>⚙</span>
+  </button>
+
+  <div id="panel" hidden>
+    <div class="panel-inner">
+      <h2>Grown-up settings</h2>
+      <div class="grid">
+        <button data-action="pause" id="pv-pause">⏸ Pause</button>
+        <button data-action="camera">🔄 Switch camera</button>
+        <div class="stepper"><button data-action="speedDown">−</button><span>Speed <b id="pv-speed">2</b></span><button data-action="speedUp">+</button></div>
+        <div class="stepper"><button data-action="fewer">−</button><span>Bubbles <b id="pv-count">6</b></span><button data-action="more">+</button></div>
+        <button data-action="sound" id="pv-sound">🔊 Sound on</button>
+        <button data-action="voice" id="pv-voice">🗣 Voice on</button>
+        <button data-action="mirror" id="pv-mirror">↔ Mirrored</button>
+        <button data-action="hands" id="pv-hands">✋ Hands: 4</button>
+        <button data-action="fps" id="pv-fps">FPS: off</button>
+        <button data-action="quality" id="pv-quality">Quality: high</button>
+        <button data-action="fullscreen">⛶ Full screen</button>
+        <button data-action="close" class="primary">Done</button>
+      </div>
+    </div>
+  </div>
+
+  <div id="help" class="overlay" hidden>
+    <div class="help-inner">
+      <h2>Grown-up keys</h2>
+      <table>
+        <tr><td><kbd>P</kbd></td><td>Pause / resume</td></tr>
+        <tr><td><kbd>1</kbd>–<kbd>5</kbd>, <kbd>↑</kbd> <kbd>↓</kbd></td><td>Bubble speed</td></tr>
+        <tr><td><kbd>+</kbd> <kbd>−</kbd>, <kbd>→</kbd> <kbd>←</kbd></td><td>More / fewer bubbles</td></tr>
+        <tr><td><kbd>M</kbd></td><td>Sound on / off</td></tr>
+        <tr><td><kbd>V</kbd></td><td>Spoken encouragement on / off</td></tr>
+        <tr><td><kbd>D</kbd></td><td>FPS / performance counter (<kbd>Shift</kbd>+<kbd>D</kbd>: show landmarks)</td></tr>
+        <tr><td><kbd>C</kbd></td><td>Switch camera</td></tr>
+        <tr><td><kbd>X</kbd></td><td>Flip mirroring</td></tr>
+        <tr><td><kbd>N</kbd></td><td>Max hands tracked (1–4)</td></tr>
+        <tr><td><kbd>Q</kbd></td><td>Quality: high / low power</td></tr>
+        <tr><td><kbd>F</kbd></td><td>Full screen</td></tr>
+        <tr><td><kbd>H</kbd></td><td>This help</td></tr>
+      </table>
+      <p>On a phone, press and hold <span class="gear-ico">⚙</span> (top right) for one second.</p>
+    </div>
+  </div>
+
+  <div id="toast" role="status"></div>
+  <div id="status" hidden></div>
+  <div id="fps" hidden></div>
+
+  <script type="module" src="js/main.js"></script>
+</body>
+</html>
