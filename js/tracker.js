@@ -13,7 +13,7 @@ export const POSE_MODEL_URL =
   'https://storage.googleapis.com/mediapipe-models/pose_landmarker/pose_landmarker_lite/float16/1/pose_landmarker_lite.task';
 
 export const MAX_HANDS = 4;
-export const MAX_POSES = 2;
+export const MAX_POSES = 4;
 
 let visionPromise = null;
 function loadVision() {
@@ -137,7 +137,7 @@ export class HandTracker extends VisionTracker {
 export class PoseTracker extends VisionTracker {
   constructor() {
     super();
-    this.max = MAX_POSES;
+    this.max = 2;
     this._modelUrl = POSE_MODEL_URL;
     this._maxKey = 'numPoses';
   }

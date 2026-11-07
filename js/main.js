@@ -26,8 +26,9 @@ const DEFAULTS = {
   debug: false,        // draw raw landmarks
   facing: 'environment',
   quality: 'high',     // canvas resolution: 'high' | 'low'
-  hands: MAX_HANDS,    // max hands to track (1..4)
-  players: MAX_POSES,  // Copy Me: max people to track (1..2)
+  hands: MAX_HANDS,    // Hand tracking: max hands (1..4)
+  players: 2,          // Body tracking: max people (1..4), both games
+  bubbleTracking: 'body', // Bubble Pop: 'body' (works from far away) | 'hands' (close up)
   mode: 'bubbles',     // 'bubbles' | 'copy'
 };
 const MODE_NAMES = { bubbles: 'Bubble Pop', copy: 'Copy Me' };
@@ -49,7 +50,8 @@ function saveSettings() {
 
 // ─── Look ────────────────────────────────────────────────────────────────────
 const COLORS = ['#ff4d6d', '#ff9f1c', '#ffd60a', '#3ddc84', '#00c2ff', '#7b61ff', '#ff5ec4'];
-const HAND_COLORS = ['#fff36b', '#7cf7ff', '#ff9de2', '#b5ff7a'];
+const HAND_COLORS = ['#fff36b', '#7cf7ff', '#ff9de2', '#b5ff7a', '#ffb86b', '#c9a7ff', '#ffffff', '#7dffc4'];
+const MAX_TRACKS = 8; // up to 4 people × 2 hands in body tracking
 const MAX_PARTICLES = 240;
 const MAX_RINGS = 24;
 
@@ -141,7 +143,11 @@ sound.enabled = settings.sound;
 sound.voiceEnabled = settings.voice;
 const handTracker = new HandTracker();
 const poseTracker = new PoseTracker();
-const trackerFor = (mode) => (mode === 'copy' ? poseTracker : handTracker);
+// Bubble Pop can follow hands with the hand model (precise, but only finds
+// hands within a few feet of a low-res webcam) or with the body model, whose
+// wrist and finger points work from across the room.
+const usesBody = (mode) => mode === 'copy' || settings.bubbleTracking !== 'hands';
+const trackerFor = (mode) => (usesBody(mode) ? poseTracker : handTracker);
 const activeTracker = () => trackerFor(state.mode);
 const copy = new CopyMe({ sound, videoToScreen });
 const camera = { stream: null, deviceId: null, facing: settings.facing, active: false };
@@ -273,6 +279,18 @@ function maybeIdleTalk(now) {
   }
 }
 
+// Grown-up hint: hand tracking only finds hands within a few feet of the
+// camera. If it sees nothing for a while, suggest body tracking.
+let trackingHintShown = false;
+function maybeTrackingHint(now) {
+  if (trackingHintShown || settings.bubbleTracking !== 'hands') return;
+  if (!camera.active || !handTracker.ready) return;
+  if (now - Math.max(state.lastHandsAt || 0, state.startedAt || 0) > 15000) {
+    trackingHintShown = true;
+    status('No hands seen. Too far from the camera? Press T (or ⚙ → Track) for body tracking.', 10000);
+  }
+}
+
 function updateEffects(dt) {
   const drag = Math.exp(-2.2 * dt);
   const grav = state.minDim * 0.35 * dt;
@@ -321,8 +339,40 @@ function landmarksToPoints(lm) {
   return pts;
 }
 
+// Pose landmarks 15–22 are wrist, pinky, index and thumb for each side.
+// Turn each visible side into a 21-point hand-shaped array so the hand
+// tracking code below can use it unchanged.
+const POSE_HANDS = [
+  { w: 15, p: 17, i: 19, t: 21 },
+  { w: 16, p: 18, i: 20, t: 22 },
+];
+function handsFromPoses(poses) {
+  const out = [];
+  for (const lm of poses) {
+    for (const s of POSE_HANDS) {
+      const w = lm[s.w];
+      if ((w.visibility ?? 1) < 0.5) continue; // off-screen or hidden hand
+      const p = lm[s.p];
+      const i = lm[s.i];
+      const t = lm[s.t];
+      const mid = { x: (i.x + p.x) / 2, y: (i.y + p.y) / 2 };
+      // The pose model sometimes reports one person twice: skip duplicates.
+      if (out.some((h) => Math.hypot(h[0].x - w.x, h[0].y - w.y) < 0.03)) continue;
+      const hand = new Array(21).fill(w);
+      hand[4] = t;
+      hand[5] = hand[8] = i;
+      hand[9] = hand[12] = mid;
+      hand[13] = hand[16] = hand[17] = hand[20] = p;
+      out.push(hand);
+    }
+  }
+  return out;
+}
+
 function onDetections(list, t) {
   perf.detections++;
+  if (settings.bubbleTracking !== 'hands') list = handsFromPoses(list);
+  if (list.length) state.lastHandsAt = t;
   const dets = list.map(landmarksToPoints);
   if (settings.debug) {
     state.rawHands = list.map((lm) => lm.map((p) => videoToScreen(p.x, p.y)));
@@ -348,7 +398,7 @@ function onDetections(list, t) {
     updateTrack(state.hands[hi], dets[di], t);
   }
   dets.forEach((d, di) => {
-    if (usedD.has(di) || state.hands.length >= MAX_HANDS) return;
+    if (usedD.has(di) || state.hands.length >= MAX_TRACKS) return;
     const usedColors = new Set(state.hands.map((h) => h.color));
     let color = 0;
     while (usedColors.has(color) && color < HAND_COLORS.length - 1) color++;
@@ -411,8 +461,10 @@ function segDist2(px, py, ax, ay, bx, by) {
 function handPads(h) {
   // Palm hit zone scales with how big the hand looks (closer = bigger).
   const size = Math.hypot(h.disp[0] - h.disp[2], h.disp[1] - h.disp[3]);
+  // Body tracking gives rougher hand points, so give it a bigger zone.
+  const minPalm = settings.bubbleTracking === 'hands' ? 0.05 : 0.075;
   return {
-    palm: Math.max(state.minDim * 0.05, size * 1.1),
+    palm: Math.max(state.minDim * minPalm, size * 1.1),
     tip: state.minDim * 0.03,
   };
 }
@@ -577,6 +629,7 @@ function loop(now) {
         updateHands(dt, now);
         collide();
         maybeIdleTalk(now);
+        maybeTrackingHint(now);
       }
     }
   }
@@ -607,7 +660,9 @@ function updateFpsText() {
   const t = activeTracker();
   const who = state.mode === 'copy'
     ? `people ${copy.people.length}/${settings.players}`
-    : `hands ${state.hands.length}/${settings.hands}`;
+    : usesBody(state.mode)
+      ? `body tracking · hands ${state.hands.length} · people max ${settings.players}`
+      : `hand tracking · hands ${state.hands.length}/${settings.hands}`;
   $('fps').textContent =
     `${MODE_NAMES[state.mode]} · ${perf.fps.toFixed(0)} fps · detect ${perf.detectHz.toFixed(0)} Hz, ` +
     `${t.detectMs.toFixed(1)} ms, every ${perf.detectEvery} frame${perf.detectEvery > 1 ? 's' : ''} · ` +
@@ -774,8 +829,19 @@ const actions = {
     resize();
     return settings.quality === 'high' ? 'High quality' : 'Low power';
   },
+  tracking() {
+    settings.bubbleTracking = settings.bubbleTracking === 'hands' ? 'body' : 'hands';
+    state.hands = [];
+    state.lastHandsAt = performance.now();
+    perf.lastDetectAt = 0;
+    activeTracker().resetVideo();
+    if (state.started && camera.active) ensureTracker(state.mode);
+    return settings.bubbleTracking === 'hands'
+      ? 'Hand tracking (close up)'
+      : 'Body tracking (works from far away)';
+  },
   hands() {
-    if (state.mode === 'copy') {
+    if (usesBody(state.mode)) {
       settings.players = (settings.players % MAX_POSES) + 1;
       poseTracker.setMax(settings.players).catch(console.error);
       return `Watch up to ${settings.players} ${settings.players > 1 ? 'people' : 'person'}`;
@@ -811,7 +877,7 @@ window.addEventListener('keydown', (e) => {
     p: 'pause', arrowup: 'speedUp', arrowdown: 'speedDown',
     '=': 'more', '+': 'more', arrowright: 'more', '-': 'fewer', _: 'fewer', arrowleft: 'fewer',
     m: 'sound', v: 'voice', c: 'camera', x: 'mirror', q: 'quality', n: 'hands',
-    g: 'game', s: 'next',
+    g: 'game', s: 'next', t: 'tracking',
     f: 'fullscreen', h: 'help', '?': 'help', escape: null,
   };
   if (k === 'd') { e.preventDefault(); run(e.shiftKey ? 'debug' : 'fps'); return; }
@@ -879,7 +945,10 @@ function refreshPanel() {
   set('pv-fps', settings.fps ? 'FPS: on' : 'FPS: off');
   set('pv-mirror', state.mirror ? '↔ Mirrored' : '↔ Not mirrored');
   set('pv-quality', settings.quality === 'high' ? 'Quality: high' : 'Quality: low power');
-  set('pv-hands', state.mode === 'copy' ? `🧍 People: ${settings.players}` : `✋ Hands: ${settings.hands}`);
+  set('pv-hands', usesBody(state.mode) ? `🧍 People: ${settings.players}` : `✋ Hands: ${settings.hands}`);
+  set('pv-tracking', settings.bubbleTracking === 'hands' ? '🎯 Track: hands (close)' : '🎯 Track: body (far)');
+  const trk = $('pv-tracking');
+  if (trk) trk.hidden = state.mode === 'copy';
   set('pv-game', `🎮 ${MODE_NAMES[state.mode]}`);
   const nextBtn = $('pv-next');
   if (nextBtn) nextBtn.hidden = state.mode !== 'copy';
@@ -891,7 +960,7 @@ function refreshPanel() {
 
 // ─── Start & modes ───────────────────────────────────────────────────────────
 function maxFor(mode) {
-  return mode === 'copy' ? settings.players : settings.hands;
+  return usesBody(mode) ? settings.players : settings.hands;
 }
 
 // Begin downloading the last-used mode's model right away (no permission
@@ -900,10 +969,11 @@ trackerFor(state.mode).init(maxFor(state.mode)).catch((e) => console.error(e));
 
 async function ensureTracker(mode) {
   const t = trackerFor(mode);
-  if (!t.ready) status(mode === 'copy' ? 'Loading body tracker…' : 'Loading hand tracker…');
+  const kind = usesBody(mode) ? 'Body' : 'Hand';
+  if (!t.ready) status(`Loading ${kind.toLowerCase()} tracker…`);
   try {
     await t.init(maxFor(mode));
-    if (state.mode === mode) status(`${mode === 'copy' ? 'Body' : 'Hand'} tracking ready (${t.delegate})`, 2500);
+    if (state.mode === mode) status(`${kind} tracking ready (${t.delegate})`, 2500);
   } catch (e) {
     console.error(e);
     status('Tracker failed to load. Check the internet connection and reload.', 10000);

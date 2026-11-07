@@ -68,7 +68,8 @@ The child stands 4–6 ft back.
 | D | FPS / performance counter (Shift+D also draws raw landmarks) |
 | C | Switch camera |
 | X | Flip mirroring |
-| N | Bubble Pop: max hands tracked (1–4). Copy Me: max people (1–2) |
+| T | Bubble Pop tracking: **body** (works from across the room) / **hands** (close up only) |
+| N | Max people for body tracking (1–4), or max hands for hand tracking (1–4) |
 | Q | Quality: high / low power (canvas resolution) |
 | F | Full screen |
 
@@ -78,6 +79,18 @@ A quick tap does nothing, so toddler taps won't open it. The panel closes on its
 The settings panel also has **Game** and **Next pose** buttons.
 Settings, including the last game played, are remembered on each device.
 You can also pop bubbles by touching or clicking them. In Copy Me, tapping the screen repeats the instruction.
+
+## Body vs hand tracking (Bubble Pop)
+
+Bubble Pop can follow hands two ways. Press **T** or use ⚙ → Track to switch.
+
+- **Body tracking (default)** uses MediaPipe Pose to find each person, then uses its wrist, index, pinky and thumb points as the hand.
+  It works from across the room. In testing on a 640×480 frame it still found both hands when the person filled only a quarter of the frame height.
+- **Hand tracking** uses the hand model, which tracks fingers precisely but needs hands to be big in the picture.
+  Its palm detector shrinks the whole camera frame to about 192 px, so in testing it stopped finding hands once the person filled less than about 70% of the frame height.
+  With a 480p webcam that means only a few feet away. It's best for a phone close to the child.
+
+If hand tracking sees nothing for 15 s, the game shows a hint to switch to body tracking.
 
 ## How Copy Me works
 
@@ -89,7 +102,7 @@ You can also pop bubbles by touching or clicking them. In Copy Me, tapping the s
   Matching for about half a second in total fills the star.
 - There's no time limit. The character repeats the instruction every 10 s, asks the child to come into view if nobody is seen,
   and after about 30 s says "Let's try a different one!" and moves on.
-- If a parent is also in view, both people are watched and either one can match (press **N** to watch only 1 person).
+- If a parent is also in view, both people are watched and either one can match. Press **N** to change how many people are watched (1–4).
 - Pose checks live in `POSES` at the top of `js/copyme.js`. Each pose is a hand position for the character plus a `check()` function,
   so adding a new pose takes a few lines.
 
