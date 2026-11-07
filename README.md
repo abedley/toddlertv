@@ -105,6 +105,9 @@ If hand tracking sees nothing for 15 s, the game shows a hint to switch to body 
 - There's no time limit. The character waits on a pose until it's copied, repeating the instruction every 10 s
   and asking the child to come into view if nobody is seen. Press **S** (or ⚙ → Next pose) to skip one.
 - The camera feed is brighter in Copy Me, and the stick figure is thin and see-through, so kids can see themselves.
+- The character stands on the left or right side of the screen. If a player stands behind it for 1.5 s and the other side is clearer,
+  it hops over to the other side. To keep it calm it never moves more than once every 8 s, and the walk across takes about 1.7 s.
+  These limits are the `MOVE_*` constants at the top of `js/copyme.js`.
 - If a parent is also in view, both people are watched and either one can match. Press **N** to change how many people are watched (1–4).
 - Jumping is spotted when the shoulders suddenly rise well above where they normally sit, so slowly standing up doesn't count.
   Hips are estimated from shoulder width when they're out of frame.

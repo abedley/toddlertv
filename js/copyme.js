@@ -15,6 +15,15 @@ const HOLD_NEEDED = 0.6;
 const REPROMPT_EVERY = 10;   // s
 const SUCCESS_TIME = 2.8;    // s of celebration
 const MAX_CONFETTI = 160;
+// The character stands on the left or right side and steps across if
+// players are standing behind it. To keep it calm, it only moves when a
+// player has covered it for a while, never more than once per cooldown,
+// and walks across at a gentle capped speed.
+const MOVE_AFTER_MS = 1500;    // player must overlap this long first
+const MOVE_COOLDOWN_MS = 8000; // minimum time between moves
+const MOVE_SPEED = 0.6;        // fraction of the left→right trip per second
+const OVERLAP_TRIGGER = 0.2;   // share of the character covered by a player
+const OVERLAP_MARGIN = 0.15;   // the other side must be at least this much clearer
 
 // Pose landmark indices (MediaPipe Pose, 33 points).
 const P = { NOSE: 0, LS: 11, RS: 12, LE: 13, RE: 14, LW: 15, RW: 16, LH: 23, RH: 24 };
@@ -292,6 +301,11 @@ export class CopyMe {
     this.hands = { R: [...IDLE_HAND], L: [...IDLE_HAND] };
     this.from = { R: [...IDLE_HAND], L: [...IDLE_HAND] };
     this.introWave = true;
+    this.posX = 0;          // 0 = left side, 1 = right side (animated)
+    this.posTarget = 0;
+    this.overlapSince = 0;
+    this.lastMoveAt = -1e9;
+    this.walking = false;
   }
 
   start() {
@@ -481,6 +495,8 @@ export class CopyMe {
       }
     }
 
+    this._updatePosition(dt, now);
+
     // skeleton smoothing
     const ks = 1 - Math.exp(-dt * 20);
     for (const p of this.people) {
@@ -532,12 +548,59 @@ export class CopyMe {
   }
 
   // ── layout ──
-  layout(v) {
+  layout(v, pos = this.posX) {
     const R = Math.min(v.H * 0.17, v.W * 0.088);
-    const cx = Math.max(v.W * 0.22, 2.7 * R + 12);
+    const left = Math.max(v.W * 0.22, 2.7 * R + 12);
+    const cx = left + (v.W - 2 * left) * ease(clamp(pos, 0, 1));
     const ground = v.H * 0.88;
     const cy = ground - R * 1.35;
     return { R, cx, cy };
+  }
+
+  // How much of the character (at a given side) is covered by players.
+  _overlap(v, pos) {
+    const { R, cx, cy } = this.layout(v, pos);
+    const box = [cx - 2.4 * R, cy - 2.0 * R, cx + 2.4 * R, cy + 1.35 * R];
+    const area = (box[2] - box[0]) * (box[3] - box[1]);
+    let covered = 0;
+    for (const p of this.people) {
+      if (p.alpha < 0.5) continue;
+      const d = p.disp;
+      let x0 = Infinity, x1 = -Infinity, y0 = Infinity;
+      for (const i of SKELETON_POINTS) {
+        x0 = Math.min(x0, d[i][0]);
+        x1 = Math.max(x1, d[i][0]);
+        y0 = Math.min(y0, d[i][1]);
+      }
+      const head = Math.hypot(d[11][0] - d[12][0], d[11][1] - d[12][1]) * 0.45;
+      // the body continues below the hips down to the floor
+      const pb = [x0 - head, y0 - head, x1 + head, v.H];
+      const w = Math.min(box[2], pb[2]) - Math.max(box[0], pb[0]);
+      const h = Math.min(box[3], pb[3]) - Math.max(box[1], pb[1]);
+      if (w > 0 && h > 0) covered = Math.max(covered, (w * h) / area);
+    }
+    return covered;
+  }
+
+  _updatePosition(dt, now) {
+    const v = this.view;
+    if (v && this.phase !== 'success' && !this.walking) {
+      const here = this._overlap(v, this.posTarget);
+      const there = this._overlap(v, 1 - this.posTarget);
+      if (here > OVERLAP_TRIGGER && there < here - OVERLAP_MARGIN) {
+        this.overlapSince ||= now;
+        if (now - this.overlapSince > MOVE_AFTER_MS && now - this.lastMoveAt > MOVE_COOLDOWN_MS) {
+          this.posTarget = 1 - this.posTarget;
+          this.lastMoveAt = now;
+          this.overlapSince = 0;
+        }
+      } else {
+        this.overlapSince = 0;
+      }
+    }
+    const d = this.posTarget - this.posX;
+    this.posX += clamp(d, -MOVE_SPEED * dt, MOVE_SPEED * dt);
+    this.walking = Math.abs(this.posTarget - this.posX) > 0.001;
   }
 
   starPos(v) {
@@ -611,6 +674,7 @@ export class CopyMe {
     // gentle idle bob, and happy hops when celebrating
     let squash = 0;
     cy += Math.sin(t * 2.2) * R * 0.03;
+    if (this.walking) cy -= Math.abs(Math.sin(t * Math.PI * 3.2)) * R * 0.15; // little hops
     if (this.phase === 'success' && this.phaseT < 2.1) {
       const hop = Math.abs(Math.sin(this.phaseT * Math.PI * 1.9));
       cy -= hop * R * 0.45;
