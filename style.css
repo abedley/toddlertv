@@ -79,20 +79,31 @@ html, body {
 .title span:nth-child(7n+7) { color: #ff5ec4; animation-delay: 1.2s; }
 @keyframes bob { 50% { transform: translateY(-0.08em); } }
 
-#start {
-  width: clamp(140px, 38vmin, 360px);
+.modes { display: flex; gap: clamp(24px, 8vmin, 120px); align-items: flex-start; justify-content: center; }
+.mode { display: flex; flex-direction: column; align-items: center; gap: 1.6vmin; }
+.mode-name { font-size: clamp(16px, 3.6vmin, 34px); font-weight: 800; opacity: 0.9; }
+.mode-btn {
+  width: clamp(120px, 32vmin, 320px);
   aspect-ratio: 1;
   border-radius: 50%;
   border: 0.6vmin solid rgba(255, 255, 255, 0.7);
-  background: radial-gradient(circle at 35% 30%, #fff 0 6%, #7ee0ff 18%, #2f8cff 60%, #6a3cff 100%);
   color: #fff;
   cursor: pointer;
-  box-shadow: 0 0 0 2vmin rgba(126, 224, 255, 0.18), 0 2vmin 5vmin rgba(0, 0, 0, 0.35);
-  animation: breathe 2.6s ease-in-out infinite;
   padding: 0;
+  animation: breathe 2.6s ease-in-out infinite;
 }
-#start svg { width: 55%; height: 55%; filter: drop-shadow(0 0.5vmin 0.5vmin rgba(0,0,0,.3)); }
-#start:active { transform: scale(0.96); }
+.mode-btn.bubbles {
+  background: radial-gradient(circle at 35% 30%, #fff 0 6%, #7ee0ff 18%, #2f8cff 60%, #6a3cff 100%);
+  box-shadow: 0 0 0 2vmin rgba(126, 224, 255, 0.18), 0 2vmin 5vmin rgba(0, 0, 0, 0.35);
+}
+.mode-btn.copy {
+  background: radial-gradient(circle at 35% 30%, #fff 0 6%, #ffe58a 18%, #ffb31c 60%, #ff6a3d 100%);
+  box-shadow: 0 0 0 2vmin rgba(255, 214, 10, 0.18), 0 2vmin 5vmin rgba(0, 0, 0, 0.35);
+  animation-delay: 1.3s;
+}
+.mode-btn.bubbles svg { width: 55%; height: 55%; filter: drop-shadow(0 0.5vmin 0.5vmin rgba(0,0,0,.3)); }
+.mode-btn.copy svg { width: 78%; height: 78%; margin-top: 6%; }
+.mode-btn:active { transform: scale(0.96); }
 @keyframes breathe { 50% { transform: scale(1.05); } }
 
 .hint { max-width: 60ch; margin: 0; font-size: clamp(12px, 2.2vmin, 18px); opacity: 0.75; line-height: 1.5; }
@@ -244,5 +255,6 @@ kbd {
 #fps[hidden], #status[hidden] { display: none; }
 
 @media (prefers-reduced-motion: reduce) {
-  .title span, #start, .phone-ico { animation: none; }
+  .title span, .mode-btn, .phone-ico { animation: none; }
 }
+.grid [hidden] { display: none !important; }

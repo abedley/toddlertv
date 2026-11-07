@@ -1,10 +1,16 @@
 # Bubble Pop 🫧
 
-A browser game for a 3-year-old. Bubbles float up the screen and the child pops
-them by waving their hands at the camera. No reading, no timers, no score, no
-losing. Up to **4 hands** are tracked at once, so two kids, or a kid and a grown-up, can play together.
+Webcam games for a 3-year-old. No reading, no timers, no score, no losing.
+Pick a game on the start screen:
 
-Everything runs in the browser with [MediaPipe Hand Landmarker](https://ai.google.dev/edge/mediapipe/solutions/vision/hand_landmarker).
+- **Bubble Pop:** bubbles float up the screen and the child pops them by waving their hands at the camera.
+  Up to **4 hands** are tracked at once, so two kids, or a kid and a grown-up, can play together.
+- **Copy Me:** a friendly purple character strikes a simple pose and says it out loud ("Reach up high!").
+  When the child copies it, a big star fills up and the character celebrates with confetti.
+  The poses are reach up high, arms out wide, wave one hand up high, hands on your head, and clap your hands.
+
+Everything runs in the browser with [MediaPipe Hand Landmarker](https://ai.google.dev/edge/mediapipe/solutions/vision/hand_landmarker)
+and [Pose Landmarker](https://ai.google.dev/edge/mediapipe/solutions/vision/pose_landmarker).
 **No video leaves the device**, and there is no server and no build step.
 
 ## Before you build anything: check the MacBook can track hands
@@ -53,6 +59,8 @@ The child stands 4–6 ft back.
 | Key | Action |
 | --- | --- |
 | P | Pause / resume |
+| G | Switch game: Bubble Pop ↔ Copy Me |
+| S | Copy Me: skip to the next pose |
 | 1–5, ↑ ↓ | Bubble speed |
 | + − , → ← | More / fewer bubbles |
 | M | Sound on/off |
@@ -60,21 +68,38 @@ The child stands 4–6 ft back.
 | D | FPS / performance counter (Shift+D also draws raw landmarks) |
 | C | Switch camera |
 | X | Flip mirroring |
-| N | Max hands tracked (cycles 1–4) |
+| N | Bubble Pop: max hands tracked (1–4). Copy Me: max people (1–2) |
 | Q | Quality: high / low power (canvas resolution) |
 | F | Full screen |
 
 **Phone.** Press and hold the faint ⚙ in the top-right corner for one second. A ring fills as you hold.
 A quick tap does nothing, so toddler taps won't open it. The panel closes on its own after 30 s.
 
-Settings are remembered on each device. You can also pop bubbles by touching or clicking them.
+The settings panel also has **Game** and **Next pose** buttons.
+Settings, including the last game played, are remembered on each device.
+You can also pop bubbles by touching or clicking them. In Copy Me, tapping the screen repeats the instruction.
+
+## How Copy Me works
+
+- Only the upper body is checked (head, shoulders, elbows, wrists), so legs don't need to be in view.
+  The child should be far enough back that their head and both arms fit in the picture, including arms raised up high.
+- Checks are scaled to the child's shoulder width, so they work near or far from the camera, and they are deliberately forgiving.
+  Either arm counts for "wave one hand", and mirroring doesn't matter.
+- The child's body shows on screen as a glowing stick figure, which turns gold while they match the pose.
+  Matching for about half a second in total fills the star.
+- There's no time limit. The character repeats the instruction every 10 s, asks the child to come into view if nobody is seen,
+  and after about 30 s says "Let's try a different one!" and moves on.
+- If a parent is also in view, both people are watched and either one can match (press **N** to watch only 1 person).
+- Pose checks live in `POSES` at the top of `js/copyme.js`. Each pose is a hand position for the character plus a `check()` function,
+  so adding a new pose takes a few lines.
 
 ## Tuning performance (MacBook)
 
-Press **D** to see: render fps · detection rate and time · how often detection runs · GPU/CPU · hands · camera and canvas size.
+Press **D** to see: game · render fps · detection rate and time · how often detection runs · GPU/CPU · hands or people · camera and canvas size.
 
 These are already built in:
-- The lightest hand model (float16), with the **GPU delegate** and an automatic **CPU fallback**.
+- The lightest models (hand landmarker float16 and **pose landmarker lite**), with the **GPU delegate** and an automatic **CPU fallback**.
+  Each model is downloaded only when its game is first played. The last-played game's model starts loading as soon as the page opens.
 - 640×480 camera input.
 - Detection runs every 1–3 frames, adjusted to the measured fps. It never runs more often than its own cost allows, so it can't take over the main thread.
 - Between detections, hand positions are smoothed and extrapolated a little. Hit tests use the path the hand swept, so fast waves still pop bubbles.
@@ -88,26 +113,27 @@ If it's sluggish, try these in order:
 ## Your own voice clips
 
 Record short clips, put them in `audio/`, and list them in `VOICE_CLIPS` at the top of `js/audio.js` (see `audio/README.md`).
-Any category with clips uses them instead of the built-in voice. You can also replace the synthesized pop with `POP_CLIPS`.
+Any category with clips uses them instead of the built-in voice. Copy Me has its own categories, including one per pose (`pose_armsUp`, `pose_clap`, …).
+You can also replace the synthesized pop with `POP_CLIPS`.
 
 ## Files
 
 ```
 index.html            page + overlays + settings panel
 style.css
-js/main.js            game loop, bubbles, particles, hand tracks, controls, camera
-js/tracker.js         MediaPipe Hand Landmarker wrapper (CDN; GPU→CPU fallback)
-js/audio.js           Web Audio pop + speechSynthesis + clip hooks
+js/main.js            game loop, Bubble Pop, hand tracks, controls, camera, modes
+js/copyme.js          Copy Me: character, poses, pose checks, celebration
+js/tracker.js         MediaPipe Hand + Pose Landmarker wrappers (CDN; GPU→CPU fallback)
+js/audio.js           Web Audio pop + chime, speechSynthesis, clip hooks
 manifest.webmanifest  "Add to Home Screen" full-screen landscape app
 icons/  audio/
 .github/workflows/pages.yml
 ```
 
-MediaPipe (`@mediapipe/tasks-vision@0.10.14`) is loaded from jsDelivr, and the model is loaded from Google's storage (`MODEL_URL` in `js/tracker.js`).
-To self-host the model, download it into `models/` and change `MODEL_URL`.
+MediaPipe (`@mediapipe/tasks-vision@0.10.14`) is loaded from jsDelivr, and the models are loaded from Google's storage
+(`HAND_MODEL_URL` and `POSE_MODEL_URL` in `js/tracker.js`). To self-host them, download them into `models/` and change those URLs.
 
 ## Later game ideas
 
 - **Show me the toy:** the game asks out loud for a toy and celebrates when the camera sees it (COCO-SSD, or a Teachable Machine model of the kids' own toys exported to TensorFlow.js).
-- **Copy the animal:** a cartoon animal jumps or raises its arms and the child copies it (MediaPipe Pose).
 - **Magic paint:** sparkly trails follow the child's hands for open-ended play.

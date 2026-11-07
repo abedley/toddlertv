@@ -1,8 +1,10 @@
 // Bubble Pop — a toddler webcam game.
-// Bubbles float up; wave your hands at the camera to pop them.
+// Mode "bubbles": bubbles float up; wave your hands at the camera to pop them.
+// Mode "copy": a friendly character strikes a pose and the child copies it.
 
-import { HandTracker, MAX_HANDS } from './tracker.js';
+import { HandTracker, PoseTracker, MAX_HANDS, MAX_POSES } from './tracker.js';
 import { Sound } from './audio.js';
+import { CopyMe } from './copyme.js';
 
 const $ = (id) => document.getElementById(id);
 const canvas = $('game');
@@ -25,7 +27,10 @@ const DEFAULTS = {
   facing: 'environment',
   quality: 'high',     // canvas resolution: 'high' | 'low'
   hands: MAX_HANDS,    // max hands to track (1..4)
+  players: MAX_POSES,  // Copy Me: max people to track (1..2)
+  mode: 'bubbles',     // 'bubbles' | 'copy'
 };
+const MODE_NAMES = { bubbles: 'Bubble Pop', copy: 'Copy Me' };
 const SPEED_MULT = [0, 0.45, 0.7, 1, 1.35, 1.75];
 const MIN_COUNT = 2;
 const MAX_COUNT = 14;
@@ -100,6 +105,7 @@ const GLOW_SPRITES = HAND_COLORS.map((col) =>
 
 // ─── State ───────────────────────────────────────────────────────────────────
 const state = {
+  mode: settings.mode === 'copy' ? 'copy' : 'bubbles',
   started: false,
   paused: false,
   portrait: false,
@@ -133,7 +139,11 @@ const perf = {
 const sound = new Sound();
 sound.enabled = settings.sound;
 sound.voiceEnabled = settings.voice;
-const tracker = new HandTracker();
+const handTracker = new HandTracker();
+const poseTracker = new PoseTracker();
+const trackerFor = (mode) => (mode === 'copy' ? poseTracker : handTracker);
+const activeTracker = () => trackerFor(state.mode);
+const copy = new CopyMe({ sound, videoToScreen });
 const camera = { stream: null, deviceId: null, facing: settings.facing, active: false };
 
 // ─── Layout ──────────────────────────────────────────────────────────────────
@@ -425,8 +435,17 @@ function collide() {
 }
 
 // Touch / mouse popping too (handy for testing, and fun for little fingers).
+let lastTapPrompt = 0;
 function pointerPop(e) {
   if (!state.started || state.paused) return;
+  if (state.mode === 'copy') {
+    // Tap: hear the instruction again (rate-limited).
+    if (e.type === 'pointerdown' && performance.now() - lastTapPrompt > 2000) {
+      lastTapPrompt = performance.now();
+      copy.repeatPrompt();
+    }
+    return;
+  }
   const pad = state.minDim * 0.02;
   for (const b of state.bubbles) {
     const R = b.r + pad;
@@ -441,6 +460,11 @@ function render(now) {
   const s = state.scale;
   ctx.setTransform(s, 0, 0, s, 0, 0);
   ctx.clearRect(0, 0, state.W, state.H);
+
+  if (state.mode === 'copy' && state.started) {
+    copy.render(ctx, state, now);
+    return;
+  }
 
   // bubbles (with a gentle wobble squish)
   for (const b of state.bubbles) {
@@ -526,6 +550,7 @@ function loop(now) {
   const running = !state.paused && !state.portrait;
   // Detection runs every Nth frame, and never takes more than about half of
   // the main thread even on a slow machine (gap >= last detection time).
+  const tracker = activeTracker();
   if (
     running && state.started && camera.active &&
     frame % perf.detectEvery === 0 &&
@@ -534,16 +559,25 @@ function loop(now) {
     const res = tracker.detect(video);
     if (res) {
       perf.lastDetectAt = now;
-      onDetections(res, performance.now());
+      if (state.mode === 'copy') {
+        perf.detections++;
+        copy.onPoses(res, performance.now());
+      } else {
+        onDetections(res, performance.now());
+      }
     }
   }
   if (running) {
-    updateBubbles(dt);
-    updateEffects(dt);
-    if (state.started) {
-      updateHands(dt, now);
-      collide();
-      maybeIdleTalk(now);
+    if (state.mode === 'copy' && state.started) {
+      copy.update(dt, now);
+    } else {
+      updateBubbles(dt);
+      updateEffects(dt);
+      if (state.started) {
+        updateHands(dt, now);
+        collide();
+        maybeIdleTalk(now);
+      }
     }
   }
   render(now);
@@ -561,6 +595,7 @@ function measure(now) {
     if (settings.fps) updateFpsText();
   }
   // Adapt how often we run detection based on measured frame rate.
+  const tracker = activeTracker();
   if (now - perf.lastAdapt > 2000 && tracker.ready && state.started && !state.paused) {
     perf.lastAdapt = now;
     if (perf.fps < 40 && perf.detectEvery < 3) perf.detectEvery++;
@@ -569,11 +604,14 @@ function measure(now) {
 }
 
 function updateFpsText() {
-  const t = tracker;
+  const t = activeTracker();
+  const who = state.mode === 'copy'
+    ? `people ${copy.people.length}/${settings.players}`
+    : `hands ${state.hands.length}/${settings.hands}`;
   $('fps').textContent =
-    `${perf.fps.toFixed(0)} fps · detect ${perf.detectHz.toFixed(0)} Hz, ` +
+    `${MODE_NAMES[state.mode]} · ${perf.fps.toFixed(0)} fps · detect ${perf.detectHz.toFixed(0)} Hz, ` +
     `${t.detectMs.toFixed(1)} ms, every ${perf.detectEvery} frame${perf.detectEvery > 1 ? 's' : ''} · ` +
-    `${t.delegate || 'loading'} · hands ${state.hands.length}/${settings.hands} · ` +
+    `${t.delegate || 'loading'} · ${who} · ` +
     `cam ${video.videoWidth || 0}×${video.videoHeight || 0}${state.mirror ? ' mirrored' : ''} · ` +
     `canvas ${canvas.width}×${canvas.height}`;
 }
@@ -602,8 +640,10 @@ async function startCamera(facing, deviceId) {
   // Laptop webcams usually don't report facingMode at all → mirror.
   state.mirror = state.mirrorOverride ?? s.facingMode !== 'environment';
   applyMirror();
-  tracker.resetVideo();
+  handTracker.resetVideo();
+  poseTracker.resetVideo();
   state.hands = [];
+  copy.people = [];
   video.classList.add('on');
 }
 
@@ -726,6 +766,7 @@ const actions = {
     state.mirrorOverride = state.mirror;
     applyMirror();
     state.hands = [];
+    copy.people = [];
     return state.mirror ? 'Mirrored' : 'Not mirrored';
   },
   quality() {
@@ -734,9 +775,23 @@ const actions = {
     return settings.quality === 'high' ? 'High quality' : 'Low power';
   },
   hands() {
+    if (state.mode === 'copy') {
+      settings.players = (settings.players % MAX_POSES) + 1;
+      poseTracker.setMax(settings.players).catch(console.error);
+      return `Watch up to ${settings.players} ${settings.players > 1 ? 'people' : 'person'}`;
+    }
     settings.hands = (settings.hands % MAX_HANDS) + 1;
-    tracker.setNumHands(settings.hands).catch(console.error);
+    handTracker.setMax(settings.hands).catch(console.error);
     return `Track up to ${settings.hands} hand${settings.hands > 1 ? 's' : ''}`;
+  },
+  game() {
+    setMode(state.mode === 'copy' ? 'bubbles' : 'copy');
+    return MODE_NAMES[state.mode];
+  },
+  next() {
+    if (state.mode !== 'copy' || !state.started) return '';
+    copy.next();
+    return 'Next pose';
   },
   fullscreen() { toggleFullscreen(); return ''; },
   help() { $('help').hidden = !$('help').hidden; return ''; },
@@ -756,6 +811,7 @@ window.addEventListener('keydown', (e) => {
     p: 'pause', arrowup: 'speedUp', arrowdown: 'speedDown',
     '=': 'more', '+': 'more', arrowright: 'more', '-': 'fewer', _: 'fewer', arrowleft: 'fewer',
     m: 'sound', v: 'voice', c: 'camera', x: 'mirror', q: 'quality', n: 'hands',
+    g: 'game', s: 'next',
     f: 'fullscreen', h: 'help', '?': 'help', escape: null,
   };
   if (k === 'd') { e.preventDefault(); run(e.shiftKey ? 'debug' : 'fps'); return; }
@@ -823,30 +879,71 @@ function refreshPanel() {
   set('pv-fps', settings.fps ? 'FPS: on' : 'FPS: off');
   set('pv-mirror', state.mirror ? '↔ Mirrored' : '↔ Not mirrored');
   set('pv-quality', settings.quality === 'high' ? 'Quality: high' : 'Quality: low power');
-  set('pv-hands', `✋ Hands: ${settings.hands}`);
+  set('pv-hands', state.mode === 'copy' ? `🧍 People: ${settings.players}` : `✋ Hands: ${settings.hands}`);
+  set('pv-game', `🎮 ${MODE_NAMES[state.mode]}`);
+  const nextBtn = $('pv-next');
+  if (nextBtn) nextBtn.hidden = state.mode !== 'copy';
+  const speed = $('pv-speed-row');
+  if (speed) speed.hidden = state.mode === 'copy';
+  const count = $('pv-count-row');
+  if (count) count.hidden = state.mode === 'copy';
 }
 
-// ─── Start ───────────────────────────────────────────────────────────────────
-const trackerLoading = tracker.init(settings.hands).catch((e) => {
-  console.error(e);
-  throw e;
-});
-trackerLoading.catch(() => {}); // handled after Start
+// ─── Start & modes ───────────────────────────────────────────────────────────
+function maxFor(mode) {
+  return mode === 'copy' ? settings.players : settings.hands;
+}
 
-$('start').addEventListener('click', async () => {
+// Begin downloading the last-used mode's model right away (no permission
+// needed), so it's usually ready by the time Start is tapped.
+trackerFor(state.mode).init(maxFor(state.mode)).catch((e) => console.error(e));
+
+async function ensureTracker(mode) {
+  const t = trackerFor(mode);
+  if (!t.ready) status(mode === 'copy' ? 'Loading body tracker…' : 'Loading hand tracker…');
+  try {
+    await t.init(maxFor(mode));
+    if (state.mode === mode) status(`${mode === 'copy' ? 'Body' : 'Hand'} tracking ready (${t.delegate})`, 2500);
+  } catch (e) {
+    console.error(e);
+    status('Tracker failed to load. Check the internet connection and reload.', 10000);
+  }
+}
+
+function setMode(mode) {
+  state.mode = mode;
+  settings.mode = mode;
+  saveSettings();
+  perf.lastDetectAt = 0;
+  activeTracker().resetVideo();
+  state.hands = [];
+  state.bubbles = [];
+  state.particles = [];
+  state.rings = [];
+  if (state.started) {
+    if (mode === 'copy') copy.start();
+    else {
+      state.lastPopAt = performance.now();
+      sound.say('start');
+    }
+    if (camera.active) ensureTracker(mode);
+  }
+  refreshPanel();
+}
+
+async function startGame(mode) {
   // Audio + speech must be unlocked synchronously inside the tap.
   sound.unlock();
-  sound.say('start');
   toggleFullscreen(true);
   requestWakeLock();
 
   $('startScreen').hidden = true;
   state.started = true;
   state.startedAt = performance.now();
-  state.lastPopAt = state.startedAt;
+  setMode(mode);
 
   if (!navigator.mediaDevices?.getUserMedia) {
-    status('No camera access here (needs https or localhost). You can still pop bubbles by touching them.', 9000);
+    status('No camera access here (needs https or localhost).', 9000);
     return;
   }
   status('Starting camera…');
@@ -854,20 +951,18 @@ $('start').addEventListener('click', async () => {
     await startCamera(settings.facing);
   } catch (e) {
     console.error(e);
-    status('Camera not available. You can still pop bubbles by touching them.', 9000);
+    status('Camera not available. Check camera permission and reload.', 9000);
     return;
   }
-  if (!tracker.ready) status('Loading hand tracker…');
-  try {
-    await trackerLoading;
-    status(`Hand tracking ready (${tracker.delegate})`, 2500);
-  } catch {
-    status('Hand tracker failed to load. Check the internet connection and reload.', 10000);
-  }
-});
+  await ensureTracker(state.mode);
+}
+
+for (const btn of document.querySelectorAll('#startScreen [data-mode]')) {
+  btn.addEventListener('click', () => startGame(btn.dataset.mode));
+}
 
 // Small hook for testing from the dev console.
-window.bubblePop = { state, settings, perf, tracker, onDetections };
+window.bubblePop = { state, settings, perf, handTracker, poseTracker, copy, onDetections, setMode };
 
 // Boot
 resize();

@@ -22,10 +22,30 @@
 
   <!-- Start screen: browsers need a tap before camera + sound -->
   <div id="startScreen" class="overlay">
-    <h1 class="title"><span>B</span><span>u</span><span>b</span><span>b</span><span>l</span><span>e</span>&nbsp;<span>P</span><span>o</span><span>p</span></h1>
-    <button id="start" aria-label="Start">
-      <svg viewBox="0 0 100 100" aria-hidden="true"><path d="M38 28 L74 50 L38 72 Z" fill="currentColor"/></svg>
-    </button>
+    <h1 class="title"><span>L</span><span>e</span><span>t</span><span>'</span><span>s</span>&nbsp;<span>p</span><span>l</span><span>a</span><span>y</span><span>!</span></h1>
+    <div class="modes">
+      <div class="mode">
+        <button class="mode-btn bubbles" data-mode="bubbles" aria-label="Start Bubble Pop">
+          <svg viewBox="0 0 100 100" aria-hidden="true"><path d="M38 28 L74 50 L38 72 Z" fill="currentColor"/></svg>
+        </button>
+        <span class="mode-name">Bubble Pop</span>
+      </div>
+      <div class="mode">
+        <button class="mode-btn copy" data-mode="copy" aria-label="Start Copy Me">
+          <svg viewBox="0 0 100 100" aria-hidden="true">
+            <ellipse cx="50" cy="55" rx="30" ry="32" fill="#8a6cff"/>
+            <path d="M50 24 Q52 12 60 9" stroke="#6a4de0" stroke-width="3" fill="none" stroke-linecap="round"/>
+            <circle cx="61" cy="8" r="5" fill="#ffd60a"/>
+            <path d="M24 52 L10 30 M76 52 L90 30" stroke="#6a4de0" stroke-width="8" stroke-linecap="round"/>
+            <circle cx="10" cy="28" r="6" fill="#a993ff"/><circle cx="90" cy="28" r="6" fill="#a993ff"/>
+            <ellipse cx="40" cy="47" rx="7" ry="8" fill="#fff"/><ellipse cx="60" cy="47" rx="7" ry="8" fill="#fff"/>
+            <circle cx="41" cy="49" r="3.5" fill="#2b1d55"/><circle cx="61" cy="49" r="3.5" fill="#2b1d55"/>
+            <path d="M42 60 Q50 68 58 60" stroke="#2b1d55" stroke-width="3" fill="none" stroke-linecap="round"/>
+          </svg>
+        </button>
+        <span class="mode-name">Copy Me</span>
+      </div>
+    </div>
     <p class="hint">Grown-ups: press <b>H</b> for keys, or long-press <span class="gear-ico">⚙</span> (top right) for settings.<br>
       The camera stays on this device. Nothing is uploaded.</p>
   </div>
@@ -50,9 +70,11 @@
       <h2>Grown-up settings</h2>
       <div class="grid">
         <button data-action="pause" id="pv-pause">⏸ Pause</button>
+        <button data-action="game" id="pv-game">🎮 Bubble Pop</button>
+        <button data-action="next" id="pv-next" hidden>⏭ Next pose</button>
         <button data-action="camera">🔄 Switch camera</button>
-        <div class="stepper"><button data-action="speedDown">−</button><span>Speed <b id="pv-speed">2</b></span><button data-action="speedUp">+</button></div>
-        <div class="stepper"><button data-action="fewer">−</button><span>Bubbles <b id="pv-count">6</b></span><button data-action="more">+</button></div>
+        <div class="stepper" id="pv-speed-row"><button data-action="speedDown">−</button><span>Speed <b id="pv-speed">2</b></span><button data-action="speedUp">+</button></div>
+        <div class="stepper" id="pv-count-row"><button data-action="fewer">−</button><span>Bubbles <b id="pv-count">6</b></span><button data-action="more">+</button></div>
         <button data-action="sound" id="pv-sound">🔊 Sound on</button>
         <button data-action="voice" id="pv-voice">🗣 Voice on</button>
         <button data-action="mirror" id="pv-mirror">↔ Mirrored</button>
@@ -70,6 +92,8 @@
       <h2>Grown-up keys</h2>
       <table>
         <tr><td><kbd>P</kbd></td><td>Pause / resume</td></tr>
+        <tr><td><kbd>G</kbd></td><td>Switch game: Bubble Pop ↔ Copy Me</td></tr>
+        <tr><td><kbd>S</kbd></td><td>Copy Me: skip to the next pose</td></tr>
         <tr><td><kbd>1</kbd>–<kbd>5</kbd>, <kbd>↑</kbd> <kbd>↓</kbd></td><td>Bubble speed</td></tr>
         <tr><td><kbd>+</kbd> <kbd>−</kbd>, <kbd>→</kbd> <kbd>←</kbd></td><td>More / fewer bubbles</td></tr>
         <tr><td><kbd>M</kbd></td><td>Sound on / off</td></tr>
@@ -77,11 +101,12 @@
         <tr><td><kbd>D</kbd></td><td>FPS / performance counter (<kbd>Shift</kbd>+<kbd>D</kbd>: show landmarks)</td></tr>
         <tr><td><kbd>C</kbd></td><td>Switch camera</td></tr>
         <tr><td><kbd>X</kbd></td><td>Flip mirroring</td></tr>
-        <tr><td><kbd>N</kbd></td><td>Max hands tracked (1–4)</td></tr>
+        <tr><td><kbd>N</kbd></td><td>Max hands tracked (1–4); in Copy Me, max people (1–2)</td></tr>
         <tr><td><kbd>Q</kbd></td><td>Quality: high / low power</td></tr>
         <tr><td><kbd>F</kbd></td><td>Full screen</td></tr>
         <tr><td><kbd>H</kbd></td><td>This help</td></tr>
       </table>
+      <p>In Copy Me, tapping the screen repeats the instruction.</p>
       <p>On a phone, press and hold <span class="gear-ico">⚙</span> (top right) for one second.</p>
     </div>
   </div>

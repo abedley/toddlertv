@@ -9,9 +9,20 @@
 // Any list with at least one clip that loads is used instead of the robot
 // voice. Empty lists fall back to speechSynthesis with the phrases below.
 export const VOICE_CLIPS = {
+  // Bubble Pop
   start: [],   // played when Start is pressed
   praise: [],  // played every few pops
   idle: [],    // played if nobody has popped anything for a while
+  // Copy Me
+  copyStart: [],        // "Let's play Copy Me! Do what I do!"
+  copyPraise: [],       // after a pose is copied
+  copyNobody: [],       // nobody is in view
+  copySwitch: [],       // giving up on a pose and trying another
+  pose_armsUp: [],      // one list per pose, e.g. ['audio/reach-up.m4a']
+  pose_armsOut: [],
+  pose_oneArmUp: [],
+  pose_handsOnHead: [],
+  pose_clap: [],
 };
 // Optional: replace the synthesized pop with recorded pop sounds.
 export const POP_CLIPS = [];
@@ -20,6 +31,10 @@ export const PHRASES = {
   start: ["Let's pop some bubbles!", 'Wave your hands to pop the bubbles!'],
   praise: ['Pop!', 'Great job!', 'Wow!', 'Yay!', 'You did it!', 'Pop pop pop!', 'Hooray!', 'Super popping!', 'Nice one!'],
   idle: ['Wave your hands!', 'Can you pop a bubble?', 'Look at all the bubbles!'],
+  copyStart: ["Let's play Copy Me! Do what I do!"],
+  copyPraise: ['You did it!', 'Great job!', 'Wow, just like me!', 'Hooray!', 'Super!', 'Yay! You copied me!'],
+  copyNobody: ['Come stand where I can see you!', 'Where are you? Come play with me!'],
+  copySwitch: ["Let's try a different one!", 'How about this one?'],
 };
 
 // Bright pentatonic notes for the little sparkle after each pop.
@@ -161,8 +176,30 @@ export class Sound {
     s.stop(now + 0.4);
   }
 
-  /** Speak a phrase of the given kind ('start' | 'praise' | 'idle'). */
-  say(kind) {
+  /** A short rising "ta-da" arpeggio for a copied pose. */
+  chime() {
+    if (!this.enabled || !this.ctx) return;
+    const now = this.ctx.currentTime;
+    [523.25, 659.25, 783.99, 1046.5].forEach((f, i) => {
+      const t = now + i * 0.09;
+      const o = this.ctx.createOscillator();
+      o.type = 'triangle';
+      o.frequency.value = f;
+      const g = this.ctx.createGain();
+      g.gain.setValueAtTime(0.0001, t);
+      g.gain.exponentialRampToValueAtTime(0.22, t + 0.015);
+      g.gain.exponentialRampToValueAtTime(0.0001, t + 0.45);
+      o.connect(g).connect(this.master);
+      o.start(t);
+      o.stop(t + 0.5);
+    });
+  }
+
+  /**
+   * Speak a phrase of the given kind (a key of PHRASES / VOICE_CLIPS).
+   * `phrases` optionally overrides the text choices for that kind.
+   */
+  say(kind, phrases) {
     if (!this.enabled || !this.voiceEnabled) return false;
     if (this.ctx && this.clips[kind]?.length) {
       this._playBuffer(pick(this.clips[kind]));
@@ -171,7 +208,7 @@ export class Sound {
     if (!('speechSynthesis' in window)) return false;
     try {
       speechSynthesis.cancel();
-      const u = new SpeechSynthesisUtterance(pick(PHRASES[kind] || PHRASES.praise));
+      const u = new SpeechSynthesisUtterance(pick(phrases || PHRASES[kind] || PHRASES.praise));
       u.rate = 0.95;
       u.pitch = 1.35;
       u.volume = 1;
