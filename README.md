@@ -102,8 +102,9 @@ If hand tracking sees nothing for 15 s, the game shows a hint to switch to body 
   Either arm counts for "wave one hand", and mirroring doesn't matter.
 - The child's body shows on screen as a glowing stick figure, which turns gold while they match the pose.
   Matching for about half a second in total fills the star.
-- There's no time limit. The character repeats the instruction every 10 s, asks the child to come into view if nobody is seen,
-  and after about 30 s says "Let's try a different one!" and moves on.
+- There's no time limit. The character waits on a pose until it's copied, repeating the instruction every 10 s
+  and asking the child to come into view if nobody is seen. Press **S** (or ⚙ → Next pose) to skip one.
+- The camera feed is brighter in Copy Me, and the stick figure is thin and see-through, so kids can see themselves.
 - If a parent is also in view, both people are watched and either one can match. Press **N** to change how many people are watched (1–4).
 - Jumping is spotted when the shoulders suddenly rise well above where they normally sit, so slowly standing up doesn't count.
   Hips are estimated from shoulder width when they're out of frame.

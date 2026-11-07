@@ -982,6 +982,7 @@ async function ensureTracker(mode) {
 
 function setMode(mode) {
   state.mode = mode;
+  document.body.classList.toggle('mode-copy', mode === 'copy');
   settings.mode = mode;
   saveSettings();
   perf.lastDetectAt = 0;

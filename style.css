@@ -38,6 +38,8 @@ html, body {
   pointer-events: none;
 }
 #cam.on { opacity: 0.38; }
+/* Copy Me: show the kids more clearly so they can see themselves posing */
+body.mode-copy #cam.on { opacity: 0.6; }
 #cam.mirror { transform: scaleX(-1); }
 
 #game {

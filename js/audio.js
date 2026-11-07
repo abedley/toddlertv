@@ -17,7 +17,6 @@ export const VOICE_CLIPS = {
   copyStart: [],        // "Let's play Copy Me! Do what I do!"
   copyPraise: [],       // after a pose is copied
   copyNobody: [],       // nobody is in view
-  copySwitch: [],       // giving up on a pose and trying another
   pose_armsUp: [],      // one list per pose, e.g. ['audio/reach-up.m4a']
   pose_armsOut: [],
   pose_oneArmUp: [],
@@ -41,7 +40,6 @@ export const PHRASES = {
   copyStart: ["Let's play Copy Me! Do what I do!"],
   copyPraise: ['You did it!', 'Great job!', 'Wow, just like me!', 'Hooray!', 'Super!', 'Yay! You copied me!'],
   copyNobody: ['Come stand where I can see you!', 'Where are you? Come play with me!'],
-  copySwitch: ["Let's try a different one!", 'How about this one?'],
 };
 
 // Bright pentatonic notes for the little sparkle after each pop.

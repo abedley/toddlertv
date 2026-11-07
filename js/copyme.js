@@ -13,7 +13,6 @@ const ease = (t) => (t < 0.5 ? 2 * t * t : 1 - (-2 * t + 2) ** 2 / 2);
 // How long (seconds, cumulative) the child must match the pose.
 const HOLD_NEEDED = 0.6;
 const REPROMPT_EVERY = 10;   // s
-const GIVE_UP_AFTER = 32;    // s, then quietly try a different pose
 const SUCCESS_TIME = 2.8;    // s of celebration
 const MAX_CONFETTI = 160;
 
@@ -453,9 +452,6 @@ export class CopyMe {
           this.sound.chime();
           setTimeout(() => this.sound.say('copyPraise'), 350);
           this._burst();
-        } else if (this.phaseT > GIVE_UP_AFTER) {
-          this.sound.say('copySwitch');
-          this._showPose(this._randomPose());
         } else if (this.t - this.lastPromptAt > REPROMPT_EVERY) {
           if (now - this.lastSeenAt > 3000) {
             this.lastPromptAt = this.t;
@@ -574,11 +570,13 @@ export class CopyMe {
     for (const p of this.people) {
       const d = p.disp;
       const sw = Math.hypot(d[11][0] - d[12][0], d[11][1] - d[12][1]);
-      const lw = clamp(sw * 0.1, v.minDim * 0.008, v.minDim * 0.03);
-      ctx.globalAlpha = clamp(p.alpha, 0, 1) * 0.85;
+      // Thin and see-through, so kids can still see themselves in the
+      // camera feed behind it.
+      const lw = clamp(sw * 0.06, v.minDim * 0.005, v.minDim * 0.018);
+      ctx.globalAlpha = clamp(p.alpha, 0, 1) * (matching ? 0.6 : 0.4);
       // soft outer glow then bright core
       for (const [width, color] of [
-        [lw * 2.2, matching ? 'rgba(255,214,10,0.35)' : 'rgba(124,247,255,0.25)'],
+        [lw * 2.2, matching ? 'rgba(255,214,10,0.3)' : 'rgba(124,247,255,0.15)'],
         [lw, matching ? '#ffe55c' : 'rgba(255,255,255,0.9)'],
       ]) {
         ctx.lineWidth = width;
