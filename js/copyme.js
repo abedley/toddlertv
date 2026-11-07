@@ -28,39 +28,103 @@ const SKELETON_POINTS = [0, 11, 12, 13, 14, 15, 16, 23, 24];
 // unless `left` is given. `check(b, game)` tests the child's pose.
 const IDLE_HAND = [1.15, 1.45];
 
+const both = (b, fn) => fn(b, b.L) && fn(b, b.R);
+const either = (b, fn) => fn(b, b.L) || fn(b, b.R);
+
+// Optional per pose:
+//   animate(t, R, L)  → { R, L } to move the character's hands over time
+//   body(t)           → { tilt, hop } to lean or bounce the whole character
 const POSES = {
   armsUp: {
     label: 'Reach up high!',
     say: ['Reach up high!', 'Arms up to the sky!', 'Can you reach up high like me?'],
     hand: [1.05, -1.9],
-    check: (b) => [b.L, b.R].every((s) => isUp(b, s, 0.9)),
+    check: (b) => both(b, (b, a) => isUp(b, a, 0.9)),
   },
   armsOut: {
     label: 'Arms out wide!',
     say: ['Arms out wide, like an airplane!', 'Stretch your arms out wide!'],
     hand: [2.6, -0.05],
-    check: (b) => [b.L, b.R].every((s) => isOut(b, s)),
+    check: (b) => both(b, isOut),
   },
   oneArmUp: {
     label: 'Wave one hand up high!',
     say: ['Wave one hand up high!', 'Wave hello up high!'],
     hand: [1.35, -1.8],
     left: IDLE_HAND,
-    wave: true,
-    check: (b) => [b.L, b.R].some((s) => isUp(b, s, 0.8)),
+    animate: (t, R, L) => ({ R: [R[0] + 0.32 * Math.sin(t * TAU * 1.3), R[1]], L }),
+    check: (b) => either(b, (b, a) => isUp(b, a, 0.8)),
   },
   handsOnHead: {
     label: 'Hands on your head!',
     say: ['Hands on your head!', 'Put your hands on your head!'],
     hand: [0.42, -1.1],
-    check: (b) => [b.L, b.R].every((s) => onHead(b, s)),
+    check: (b) => both(b, onHead),
   },
   clap: {
     label: 'Clap your hands!',
     say: ['Clap your hands!', 'Clap clap clap!'],
     hand: [0.1, 0.45],
-    clap: true,
+    animate: (t) => {
+      const R = [0.1 + 0.42 * Math.abs(Math.sin(t * Math.PI * 1.6)), 0.45];
+      return { R, L: [...R] };
+    },
     check: (b, game) => game.now - game.lastTogetherAt < 600,
+  },
+  hips: {
+    label: 'Hands on your hips!',
+    say: ['Hands on your hips!', 'Put your hands on your hips, like a teapot!'],
+    hand: [0.98, 0.4],
+    check: (b) => both(b, onHip),
+  },
+  tummy: {
+    label: 'Pat your tummy!',
+    say: ['Pat your tummy!', 'Pat pat pat your tummy!'],
+    hand: [0.3, 0.55],
+    animate: (t, R) => {
+      const r = [R[0], R[1] - 0.12 * Math.abs(Math.sin(t * Math.PI * 2.2))];
+      return { R: r, L: [...r] };
+    },
+    check: (b) => both(b, onTummy),
+  },
+  shoulders: {
+    label: 'Hands on your shoulders!',
+    say: ['Hands on your shoulders!', 'Touch your shoulders!'],
+    hand: [0.86, -0.55],
+    elbow: 'down',
+    check: (b) => both(b, onShoulder),
+  },
+  peekaboo: {
+    label: 'Peekaboo!',
+    say: ['Cover your eyes! Peekaboo!', 'Can you play peekaboo?'],
+    hand: [0.33, -0.3],
+    animate: (t, R) => {
+      // hands over the eyes, then a quick "boo!" every couple of seconds
+      const open = Math.max(0, Math.sin(t * Math.PI * 0.8) - 0.75) * 4;
+      const r = [R[0] + 0.7 * open, R[1] - 0.1 * open];
+      return { R: r, L: [...r] };
+    },
+    check: (b) => both(b, onEyes),
+  },
+  bigCircle: {
+    label: 'Make a big circle!',
+    say: ['Make a big circle over your head!', 'Make a big round sun over your head!'],
+    hand: [0.16, -1.5],
+    check: (b) => both(b, (b, a) => isUp(b, a, 0.75)) && wristGap(b) < 0.8 * b.sw,
+  },
+  lean: {
+    label: 'Lean like a tree!',
+    say: ['Sway side to side like a tree in the wind!', 'Lean over like a tree!'],
+    hand: [1.0, -1.85],
+    body: (t) => ({ tilt: 0.28 * Math.sin(t * TAU * 0.35) }),
+    check: isLeaning,
+  },
+  jump: {
+    label: 'Jump!',
+    say: ['Jump! Jump! Jump!', 'Can you jump like me?'],
+    hand: [1.4, -1.3],
+    body: (t) => ({ hop: Math.abs(Math.sin(t * Math.PI * 1.5)) }),
+    check: (b, game) => game.now - game.lastJumpAt < 700,
   },
 };
 const POSE_IDS = Object.keys(POSES);
@@ -77,11 +141,63 @@ function bodyFrom(lm) {
   const sw = Math.max(Math.hypot(ls.x - rs.x, ls.y - rs.y), 0.04);
   const midX = (ls.x + rs.x) / 2;
   const side = Math.sign(ls.x - midX) || 1;
+  const sy = (ls.y + rs.y) / 2;
+  // Hips are often out of frame; estimate them from shoulder width if so.
+  const lh = lm[P.LH];
+  const rh = lm[P.RH];
+  const hipsSeen = (lh.visibility ?? 1) > 0.5 && (rh.visibility ?? 1) > 0.5;
+  const hipY = hipsSeen ? (lh.y + rh.y) / 2 : sy + 1.4 * sw;
   return {
-    nose, sw, midX,
+    nose, sw, midX, sy, hipY,
     L: { s: ls, e: lm[P.LE], w: lm[P.LW], side },
     R: { s: rs, e: lm[P.RE], w: lm[P.RW], side: -side },
   };
+}
+
+function wristGap(b) {
+  return Math.hypot(b.L.w.x - b.R.w.x, b.L.w.y - b.R.w.y);
+}
+
+function onHip(b, a) {
+  // Wrist down near the hip, out to the side, elbow sticking out further.
+  const out = (a.w.x - b.midX) * a.side;
+  const elbowOut = (a.e.x - b.midX) * a.side;
+  return (
+    Math.abs(a.w.y - b.hipY) < 0.55 * b.sw &&
+    out > 0.25 * b.sw && out < 1.2 * b.sw &&
+    elbowOut > out + 0.1 * b.sw
+  );
+}
+
+function onTummy(b, a) {
+  // Wrist in front of the belly, between chest and hips, near the middle.
+  return (
+    a.w.y > b.sy + 0.35 * b.sw &&
+    a.w.y < b.hipY + 0.25 * b.sw &&
+    Math.abs(a.w.x - b.midX) < 0.55 * b.sw
+  );
+}
+
+function onShoulder(b, a) {
+  // Wrist close to either shoulder (crossing over counts too).
+  const near = (s) => Math.hypot(a.w.x - s.x, a.w.y - s.y) < 0.5 * b.sw;
+  return (near(b.L.s) || near(b.R.s)) && a.w.y < b.sy + 0.35 * b.sw;
+}
+
+function onEyes(b, a) {
+  // Wrist in front of the face.
+  return (
+    Math.abs(a.w.x - b.nose.x) < 0.6 * b.sw &&
+    a.w.y > b.nose.y - 0.55 * b.sw &&
+    a.w.y < b.nose.y + 0.45 * b.sw
+  );
+}
+
+function isLeaning(b) {
+  // Shoulders tipped, or the head shifted well to one side.
+  const tip = Math.abs(b.L.s.y - b.R.s.y) / b.sw;
+  const shift = Math.abs(b.nose.x - b.midX) / b.sw;
+  return tip > 0.35 || shift > 0.5;
 }
 
 function isUp(b, a, k) {
@@ -117,8 +233,9 @@ function handsTogether(lm, b) {
 }
 
 // ─── Two-bone IK for the character's arms ────────────────────────────────────
-// Shoulder at (sx, sy), reach for (tx, ty); elbow bends outward (+x).
-function solveArm(sx, sy, tx, ty, L1, L2) {
+// Shoulder at (sx, sy), reach for (tx, ty); elbow bends outward (+x), or
+// downward when elbowDown is set.
+function solveArm(sx, sy, tx, ty, L1, L2, elbowDown = false) {
   let dx = tx - sx;
   let dy = ty - sy;
   let d = Math.hypot(dx, dy);
@@ -130,7 +247,7 @@ function solveArm(sx, sy, tx, ty, L1, L2) {
   const base = Math.atan2(dy, dx);
   const e1 = [sx + Math.cos(base + a) * L1, sy + Math.sin(base + a) * L1];
   const e2 = [sx + Math.cos(base - a) * L1, sy + Math.sin(base - a) * L1];
-  const e = e1[0] > e2[0] ? e1 : e2;
+  const e = elbowDown ? (e1[1] > e2[1] ? e1 : e2) : e1[0] > e2[0] ? e1 : e2;
   return { e, h: [sx + dx, sy + dy] };
 }
 
@@ -162,6 +279,9 @@ export class CopyMe {
     this.lastDetectAt = -1e9;
     this.lastSeenAt = -1e9;
     this.lastTogetherAt = -1e9;
+    this.lastJumpAt = -1e9;
+    this.baseY = null;
+    this.jumpT = 0;
     this.lastPromptAt = 0;
     this.now = performance.now();
     this.people = [];       // smoothed skeletons on screen
@@ -204,16 +324,33 @@ export class CopyMe {
     let match = false;
     const pose = this.poseId && POSES[this.poseId];
     const seen = [];
+    let main = null;
     for (const lm of list) {
       const b = bodyFrom(lm);
       if (!b) continue;
       seen.push(lm);
+      if (!main || b.sw > main.sw) main = b;
       if (handsTogether(lm, b)) this.lastTogetherAt = now;
-      if (pose && pose.check(b, this)) match = true;
+    }
+    if (main) this._trackJump(main, now);
+    for (const lm of seen) {
+      if (pose && pose.check(bodyFrom(lm), this)) match = true;
     }
     if (seen.length) this.lastSeenAt = now;
     this.matchNow = match;
     this._updatePeople(seen);
+  }
+
+  // A jump = shoulders suddenly rise well above where they usually are.
+  _trackJump(b, now) {
+    const dt = Math.min((now - (this.jumpT || now)) / 1000, 0.5);
+    this.jumpT = now;
+    if (this.baseY == null) { this.baseY = b.sy; return; }
+    if ((this.baseY - b.sy) / b.sw > 0.25) this.lastJumpAt = now;
+    // Follow slowly upward (so a jump doesn't become the new normal) and
+    // faster downward (landing, crouching, kneeling).
+    const rate = b.sy > this.baseY ? 2.5 : 0.6;
+    this.baseY += (b.sy - this.baseY) * Math.min(1, dt * rate);
   }
 
   _updatePeople(list) {
@@ -289,15 +426,9 @@ export class CopyMe {
       return { R: [1.3 + w, -1.8], L: [1.3 - w, -1.8] };
     }
     const pose = POSES[this.poseId];
-    let R = [...pose.hand];
-    let L = [...(pose.left || pose.hand)];
-    if (pose.wave) R[0] += 0.32 * Math.sin(t * TAU * 1.3);
-    if (pose.clap) {
-      const open = Math.abs(Math.sin(t * Math.PI * 1.6));
-      R = [0.1 + 0.42 * open, 0.45];
-      L = [...R];
-    }
-    return { R, L };
+    const R = [...pose.hand];
+    const L = [...(pose.left || pose.hand)];
+    return pose.animate ? pose.animate(t, R, L) : { R, L };
   }
 
   update(dt, now) {
@@ -487,6 +618,18 @@ export class CopyMe {
       cy -= hop * R * 0.45;
       squash = (1 - hop) * 0.08;
     }
+    // pose-specific body motion (lean, jump), eased in while showing
+    let tilt = 0;
+    const pose = this.poseId && POSES[this.poseId];
+    if (pose?.body && (this.phase === 'show' || this.phase === 'wait')) {
+      const k = this.phase === 'show' ? ease(clamp(this.phaseT / 0.8, 0, 1)) : 1;
+      const m = pose.body(t);
+      tilt = (m.tilt || 0) * k;
+      if (m.hop) {
+        cy -= m.hop * R * 0.4 * k;
+        squash = (1 - m.hop) * 0.08 * k;
+      }
+    }
 
     ctx.save();
     ctx.translate(cx, cy);
@@ -499,6 +642,11 @@ export class CopyMe {
     ctx.beginPath();
     ctx.ellipse(0, (this.layout(v).cy - cy) / R + 1.32, 0.9, 0.12, 0, 0, TAU);
     ctx.fill();
+
+    // lean from the feet
+    ctx.translate(0, 1.3);
+    ctx.rotate(tilt);
+    ctx.translate(0, -1.3);
 
     // feet
     ctx.fillStyle = C.bodyDark;
@@ -539,7 +687,8 @@ export class CopyMe {
     const L2 = 0.75;
     for (const [s, sign] of [['R', 1], ['L', -1]]) {
       const [hx, hy] = this.hands[s];
-      const { e, h } = solveArm(0.78, -0.05, hx, hy, L1, L2);
+      const elbowDown = pose?.elbow === 'down' && (this.phase === 'show' || this.phase === 'wait');
+      const { e, h } = solveArm(0.78, -0.05, hx, hy, L1, L2, elbowDown);
       ctx.strokeStyle = C.bodyDark;
       ctx.lineWidth = 0.26;
       ctx.beginPath();
@@ -557,7 +706,10 @@ export class CopyMe {
 
   _drawFace(ctx) {
     const happy = this.phase === 'success';
-    const blinking = this.t > this.blinkAt && this.t < this.blinkAt + 0.14;
+    // eyes shut while the hands cover them (peekaboo)
+    const [hx, hy] = this.hands.R;
+    const covered = Math.hypot(hx - 0.33, hy + 0.3) < 0.25;
+    const blinking = covered || (this.t > this.blinkAt && this.t < this.blinkAt + 0.14);
     // cheeks
     ctx.fillStyle = C.cheek;
     for (const s of [-1, 1]) {

@@ -23,6 +23,13 @@ export const VOICE_CLIPS = {
   pose_oneArmUp: [],
   pose_handsOnHead: [],
   pose_clap: [],
+  pose_hips: [],
+  pose_tummy: [],
+  pose_shoulders: [],
+  pose_peekaboo: [],
+  pose_bigCircle: [],
+  pose_lean: [],
+  pose_jump: [],
 };
 // Optional: replace the synthesized pop with recorded pop sounds.
 export const POP_CLIPS = [];

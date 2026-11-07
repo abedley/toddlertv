@@ -7,7 +7,9 @@ Pick a game on the start screen:
   Up to **4 hands** are tracked at once, so two kids, or a kid and a grown-up, can play together.
 - **Copy Me:** a friendly purple character strikes a simple pose and says it out loud ("Reach up high!").
   When the child copies it, a big star fills up and the character celebrates with confetti.
-  The poses are reach up high, arms out wide, wave one hand up high, hands on your head, and clap your hands.
+  There are 12 poses: reach up high, arms out wide, wave one hand up high, hands on your head, clap your hands,
+  hands on your hips, pat your tummy, hands on your shoulders, peekaboo (cover your eyes), make a big circle over your head,
+  lean like a tree, and jump.
 
 Everything runs in the browser with [MediaPipe Hand Landmarker](https://ai.google.dev/edge/mediapipe/solutions/vision/hand_landmarker)
 and [Pose Landmarker](https://ai.google.dev/edge/mediapipe/solutions/vision/pose_landmarker).
@@ -103,6 +105,8 @@ If hand tracking sees nothing for 15 s, the game shows a hint to switch to body 
 - There's no time limit. The character repeats the instruction every 10 s, asks the child to come into view if nobody is seen,
   and after about 30 s says "Let's try a different one!" and moves on.
 - If a parent is also in view, both people are watched and either one can match. Press **N** to change how many people are watched (1–4).
+- Jumping is spotted when the shoulders suddenly rise well above where they normally sit, so slowly standing up doesn't count.
+  Hips are estimated from shoulder width when they're out of frame.
 - Pose checks live in `POSES` at the top of `js/copyme.js`. Each pose is a hand position for the character plus a `check()` function,
   so adding a new pose takes a few lines.
 
